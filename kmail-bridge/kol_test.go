@@ -28,13 +28,13 @@ func TestParseKmail(t *testing.T) {
 			name:    "items and meat",
 			typ:     "normal",
 			message: `Here you go<center><table class="item" style="float: none" rel="id=641&s=14&q=0&d=1&g=0&t=1&n=1&m=0&p=0&u=e"><tr><td><img src="https://d2uyhvukfffg5a.cloudfront.net/itemimages/toast.gif" alt="toast" title="toast" class=hand onClick='descitem(931984879)' ></td><td valign=center class=effect>You acquire an item: <b>toast</b></td></tr></table></center><center>You gain 1,000 Meat</center>`,
-			want:    ParsedKmail{Text: "Here you go", Items: []KmailItem{{Name: "toast", Quantity: 1}}, Meat: 1000},
+			want:    ParsedKmail{Text: "Here you go", Items: []KmailItem{{ID: 641, Name: "toast", Quantity: 1, Image: "toast.gif"}}, Meat: 1000},
 		},
 		{
 			name:    "stack of items",
 			typ:     "normal",
 			message: `<center><table class="item" style="float: none" rel="id=6863&s=1&q=0&d=1&g=0&t=1&n=2&m=0&p=0&u=e"><tr><td><img src="https://d2uyhvukfffg5a.cloudfront.net/itemimages/butterpat.gif" alt="pat of butter" title="pat of butter" class=hand onClick='descitem(310457727)' ></td><td valign=center class=effect>You acquire <b>2 pats of butter</b></td></tr></table></center>`,
-			want:    ParsedKmail{Items: []KmailItem{{Name: "pat of butter", Quantity: 2}}},
+			want:    ParsedKmail{Items: []KmailItem{{ID: 6863, Name: "pat of butter", Quantity: 2, Image: "butterpat.gif"}}},
 		},
 		{
 			name:    "system kmail with formatting",
@@ -42,7 +42,7 @@ func TestParseKmail(t *testing.T) {
 			message: `Dear dEvstEr5:<p>We found this telegram.<p>Respectfully,<br>The Postmen of Loathing<center><table class="item" style="float: none" rel="id=7304&s=0&q=1&d=0&g=0&t=0&n=1&m=0&p=0&u=u"><tr><td><img src="https://images.kingdomofloathing.com/itemimages/document.gif" alt="telegram from Lady Spookyraven" title="telegram from Lady Spookyraven" class=hand onClick='descitem(514364304)' ></td><td valign=center class=effect>You acquire an item: <b>telegram from Lady Spookyraven</b></td></tr></table></center>`,
 			want: ParsedKmail{
 				Text:  "Dear dEvstEr5:\n\nWe found this telegram.\n\nRespectfully,\nThe Postmen of Loathing",
-				Items: []KmailItem{{Name: "telegram from Lady Spookyraven", Quantity: 1}},
+				Items: []KmailItem{{ID: 7304, Name: "telegram from Lady Spookyraven", Quantity: 1, Image: "document.gif"}},
 			},
 		},
 		{

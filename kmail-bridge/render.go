@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"mime"
+	"path"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -25,7 +28,34 @@ func playerAddress(name string, id int) *mail.Address {
 	return &mail.Address{Name: name, Address: fmt.Sprintf("%d@%s", id, domain)}
 }
 
-func RenderKmail(k Kmail, me *mail.Address) ([]byte, error) {
+// ImageFunc returns an item icon by file name, or nil if KoL doesn't have it.
+type ImageFunc func(name string) ([]byte, error)
+
+// attachment is an item or Meat received with a kmail. They're attached as their icons so mail
+// clients show them along the bottom like the game does. They're for show: sending them on
+// doesn't send anything.
+type attachment struct {
+	filename string
+	image    string
+	itemID   int
+}
+
+func attachments(p ParsedKmail) []attachment {
+	var out []attachment
+	if p.Meat > 0 {
+		out = append(out, attachment{filename: commas(p.Meat) + " Meat", image: meatImage})
+	}
+	for _, it := range p.Items {
+		name := strings.NewReplacer("/", "-", "\\", "-").Replace(it.Name)
+		if it.Quantity != 1 {
+			name = commas(it.Quantity) + " × " + name
+		}
+		out = append(out, attachment{filename: name, image: it.Image, itemID: it.ID})
+	}
+	return out
+}
+
+func RenderKmail(k Kmail, me *mail.Address, images ImageFunc) ([]byte, error) {
 	p := ParseKmail(k)
 
 	var h mail.Header
@@ -38,17 +68,71 @@ func RenderKmail(k Kmail, me *mail.Address) ([]byte, error) {
 	if p.Meat > 0 {
 		h.Set("X-KoL-Meat", strconv.Itoa(p.Meat))
 	}
-	h.SetContentType("text/plain", map[string]string{"charset": "utf-8"})
 
 	var buf bytes.Buffer
-	w, err := mail.CreateSingleInlineWriter(&buf, h)
+	atts := attachments(p)
+	if len(atts) == 0 {
+		h.SetContentType("text/plain", map[string]string{"charset": "utf-8"})
+		w, err := mail.CreateSingleInlineWriter(&buf, h)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := io.WriteString(w, body(p)); err != nil {
+			return nil, err
+		}
+		if err := w.Close(); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	}
+
+	mw, err := mail.CreateWriter(&buf, h)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := w.Write([]byte(body(p))); err != nil {
+	var th mail.InlineHeader
+	th.SetContentType("text/plain", map[string]string{"charset": "utf-8"})
+	tw, err := mw.CreateSingleInline(th)
+	if err != nil {
 		return nil, err
 	}
-	if err := w.Close(); err != nil {
+	if _, err := io.WriteString(tw, body(p)); err != nil {
+		return nil, err
+	}
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+
+	for _, a := range atts {
+		var img []byte
+		if a.image != "" {
+			if img, err = images(a.image); err != nil {
+				return nil, err
+			}
+		}
+		var ah mail.AttachmentHeader
+		if img != nil {
+			ah.SetContentType(mime.TypeByExtension(path.Ext(a.image)), nil)
+			ah.SetFilename(a.filename + path.Ext(a.image))
+		} else {
+			ah.SetContentType("application/octet-stream", nil)
+			ah.SetFilename(a.filename)
+		}
+		if a.itemID != 0 {
+			ah.Set("X-KoL-Item-Id", strconv.Itoa(a.itemID))
+		}
+		aw, err := mw.CreateAttachment(ah)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := aw.Write(img); err != nil {
+			return nil, err
+		}
+		if err := aw.Close(); err != nil {
+			return nil, err
+		}
+	}
+	if err := mw.Close(); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

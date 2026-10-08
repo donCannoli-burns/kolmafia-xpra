@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -153,7 +154,51 @@ func (b *Bridge) Sync(ctx context.Context) error {
 		return err
 	}
 	playerID, _ := strconv.Atoi(s.PlayerID)
-	return a.syncInbox(s.Name, playerID, kmails, len(kmails) >= inboxFetchCount)
+
+	// Render new kmails before taking the account lock, since it can mean fetching icons.
+	slices.SortFunc(kmails, func(x, y Kmail) int { return cmp.Compare(x.ID, y.ID) })
+	a.mu.Lock()
+	uidNext := a.mailboxLocked("INBOX").UIDNext
+	a.mu.Unlock()
+	me := playerAddress(s.Name, playerID)
+	rendered := map[uint32][]byte{}
+	var renderErr error
+	for _, k := range kmails {
+		if imap.UID(k.ID) < uidNext {
+			continue
+		}
+		raw, err := RenderKmail(k, me, func(name string) ([]byte, error) { return b.itemImage(ctx, name) })
+		if err != nil {
+			// Later kmails wait too, as UIDs have to arrive in order. This is retried next sync.
+			renderErr = fmt.Errorf("rendering kmail %d: %w", k.ID, err)
+			break
+		}
+		rendered[k.ID] = raw
+	}
+
+	return errors.Join(a.syncInbox(s.Name, playerID, kmails, len(kmails) >= inboxFetchCount, rendered), renderErr)
+}
+
+// itemImage returns an icon from the cache in the state directory, fetching it if needed. It's
+// nil if KoL doesn't have one.
+func (b *Bridge) itemImage(ctx context.Context, name string) ([]byte, error) {
+	if !imageNameRe.MatchString(name) {
+		return nil, nil
+	}
+	file := filepath.Join(b.dir, "images", name)
+	if img, err := os.ReadFile(file); err == nil {
+		return img, nil
+	}
+	img, err := b.kol.ItemImage(ctx, name)
+	if errors.Is(err, errNoImage) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err == nil {
+		os.WriteFile(file, img, 0o600)
+	}
+	return img, nil
 }
 
 type Account struct {
@@ -250,7 +295,7 @@ func (a *Account) mailbox(name string) (*Mailbox, error) {
 	return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeNonExistent, Text: "No such mailbox"}
 }
 
-func (a *Account) syncInbox(name string, playerID int, kmails []Kmail, truncated bool) error {
+func (a *Account) syncInbox(name string, playerID int, kmails []Kmail, truncated bool, rendered map[uint32][]byte) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -280,17 +325,15 @@ func (a *Account) syncInbox(name string, playerID int, kmails []Kmail, truncated
 		changed = true
 	}
 
-	slices.SortFunc(kmails, func(x, y Kmail) int { return int(int64(x.ID) - int64(y.ID)) })
-	me := playerAddress(name, playerID)
+	// kmails is oldest first, and rendered stops at the first kmail that couldn't be.
 	for _, k := range kmails {
 		uid := imap.UID(k.ID)
 		if uid < inbox.UIDNext {
 			continue
 		}
-		raw, err := RenderKmail(k, me)
-		if err != nil {
-			log.Printf("rendering kmail %d: %v", k.ID, err)
-			continue
+		raw, ok := rendered[k.ID]
+		if !ok {
+			break
 		}
 		inbox.Messages = append(inbox.Messages, &Message{UID: uid, Time: k.Time, Raw: raw})
 		inbox.UIDNext = uid + 1

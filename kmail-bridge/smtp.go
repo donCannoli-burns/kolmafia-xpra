@@ -98,8 +98,9 @@ func (s *smtpSession) Reset()        { s.to = nil }
 func (s *smtpSession) Logout() error { return nil }
 
 var (
-	attributionRe = regexp.MustCompile(`^On .*wrote:\s*$`)
-	replyPrefixRe = regexp.MustCompile(`(?i)^(re|fwd?|aw|sv):`)
+	errNoAttachments = errors.New("kmail can't carry attachments; send items and Meat in-game")
+	attributionRe    = regexp.MustCompile(`^On .*wrote:\s*$`)
+	replyPrefixRe    = regexp.MustCompile(`(?i)^(re|fwd?|aw|sv):`)
 )
 
 // OutgoingText turns an email into kmail text: the plain-text body without quoted replies or a
@@ -119,7 +120,8 @@ func OutgoingText(r io.Reader) (string, error) {
 		}
 		h, ok := p.Header.(*mail.InlineHeader)
 		if !ok {
-			continue
+			// Including forwarded item attachments, which would otherwise look like they were sent.
+			return "", errNoAttachments
 		}
 		ct, params, _ := h.ContentType()
 		b, err := io.ReadAll(p.Body)

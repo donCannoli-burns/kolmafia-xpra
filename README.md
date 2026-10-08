@@ -33,7 +33,8 @@ Set `KMAIL_PASSWORD` to read and send kmail from a mail client. It goes through 
 - IMAP on `993` (`IMAP_PORT`) and SMTP on `465` (`SMTP_PORT`), both TLS only. Log in with your character name and `KMAIL_PASSWORD`
 - Players are `playerid@kingdomofloathing.internal`, and KoL's own characters like the Postal Service are `noreply@`. Replies work as normal; outgoing mail to anything else is refused. Your subject leads the kmail unless it's a reply, and quoted text and signatures are dropped
 - Deleting from INBOX deletes the kmail in KoL. Sent, Drafts, Trash and Archive only exist in the bridge
-- INBOX polls every minute and holds the newest 100 kmails, which is as many as KoL's API returns. Items and meat can be read but not sent
+- INBOX polls every minute and holds the newest 100 kmails, which is as many as KoL's API returns
+- Items and Meat you're sent show up as attachments with their icons. They can't be sent this way, and mail with attachments is refused so forwarding a kmail can't look like it passed them on
 - Without `KMAIL_TLS_CERT`/`KMAIL_TLS_KEY` (paths inside the container), a self-signed certificate for `KMAIL_HOSTNAME` is made in `kmail-bridge/` in the data directory. Your mail client will ask you to trust it once
 
 ## Native client behind Authelia

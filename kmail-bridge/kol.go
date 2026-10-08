@@ -24,11 +24,46 @@ var errNotLoggedIn = errors.New("KoLmafia relay is not reachable (not logged in?
 
 type KoL struct {
 	base   string
+	images string
 	client *http.Client
 }
 
 func NewKoL(base string) *KoL {
-	return &KoL{base: strings.TrimSuffix(base, "/"), client: &http.Client{Timeout: 30 * time.Second}}
+	return &KoL{
+		base:   strings.TrimSuffix(base, "/"),
+		images: "https://images.kingdomofloathing.com/itemimages/",
+		client: &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+const meatImage = "meat.gif"
+
+var (
+	imageNameRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+\.(?:gif|png|jpg)$`)
+	errNoImage  = errors.New("no such image")
+)
+
+// ItemImage fetches an item's icon from KoL's public image server, not through the relay.
+func (k *KoL) ItemImage(ctx context.Context, name string) ([]byte, error) {
+	if !imageNameRe.MatchString(name) {
+		return nil, errNoImage
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, k.images+name, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := k.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusForbidden:
+		return nil, errNoImage
+	case resp.StatusCode != http.StatusOK:
+		return nil, fmt.Errorf("%s: HTTP %d", name, resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 }
 
 type Status struct {
@@ -187,8 +222,10 @@ func resultText(page string) string {
 }
 
 type KmailItem struct {
+	ID       int
 	Name     string
 	Quantity int
+	Image    string // file name under itemimages/
 }
 
 type ParsedKmail struct {
@@ -272,6 +309,7 @@ func parseItems(fragment string) []KmailItem {
 		if n.Type == nethtml.ElementNode && n.Data == "table" && hasClass(n, "item") {
 			it := KmailItem{Quantity: 1}
 			if q, err := url.ParseQuery(attr(n, "rel")); err == nil {
+				it.ID, _ = strconv.Atoi(q.Get("id"))
 				if v, err := strconv.Atoi(q.Get("n")); err == nil {
 					it.Quantity = v
 				}
@@ -284,6 +322,9 @@ func parseItems(fragment string) []KmailItem {
 		}
 		if n.Type == nethtml.ElementNode && n.Data == "img" && cur != nil && cur.Name == "" {
 			cur.Name = attr(n, "title")
+			if _, file, ok := strings.Cut(attr(n, "src"), "/itemimages/"); ok && imageNameRe.MatchString(file) {
+				cur.Image = file
+			}
 		}
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			walk(c, cur)
