@@ -26,6 +26,16 @@ The KoLmafia version is chosen from inside the session: the "KoLmafia version" b
 - `KOLMAFIA_UI_SCALE=2` renders KoLmafia and its dialogs at 2x for sharp text on HiDPI screens. The HTML5 client scales it back down by itself; native clients need `--desktop-scaling=0.5`
 - `KOLMAFIA_PUBLIC_URL=https://kolmafia.example.com` is where the relay browser opens when KoLmafia asks for it. Without it the HTML5 client opens it on whatever address you reached xpra on, but the native client can't
 
+## Kmail over IMAP
+
+Set `KMAIL_PASSWORD` to read and send kmail from a mail client. It goes through the relay, so it only syncs while KoLmafia is logged in, and only for whoever that is. Mail already synced stays readable when it isn't.
+
+- IMAP on `993` (`IMAP_PORT`) and SMTP on `465` (`SMTP_PORT`), both TLS only. Log in with your character name and `KMAIL_PASSWORD`
+- Players are `playerid@kingdomofloathing.internal`, and KoL's own characters like the Postal Service are `noreply@`. Replies work as normal; outgoing mail to anything else is refused. Your subject leads the kmail unless it's a reply, and quoted text and signatures are dropped
+- Deleting from INBOX deletes the kmail in KoL. Sent, Drafts, Trash and Archive only exist in the bridge
+- INBOX polls every minute and holds the newest 100 kmails, which is as many as KoL's API returns. Items and meat can be read but not sent
+- Without `KMAIL_TLS_CERT`/`KMAIL_TLS_KEY` (paths inside the container), a self-signed certificate for `KMAIL_HOSTNAME` is made in `kmail-bridge/` in the data directory. Your mail client will ask you to trust it once
+
 ## Native client behind Authelia
 
 The native client can't follow Authelia's login redirect. `contrib/xpra-attach-authelia` logs in via Authelia's API and passes the session cookie to `xpra attach`:

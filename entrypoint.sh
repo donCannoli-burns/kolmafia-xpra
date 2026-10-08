@@ -26,6 +26,10 @@ fi
 
 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
 
+if [ -n "$KMAIL_PASSWORD" ]; then
+  kmail-bridge &
+fi
+
 exec xpra start :100 \
   --daemon=no \
   --xvfb=Xorg \

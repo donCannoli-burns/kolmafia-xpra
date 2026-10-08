@@ -4,6 +4,13 @@ RUN apt-get update \
 COPY gio-browse/browse.c /src/
 RUN gcc -shared -fPIC -O2 -o /src/libgiobrowse.so /src/browse.c $(pkg-config --cflags --libs gio-2.0)
 
+FROM golang:1-trixie AS kmail-bridge
+WORKDIR /src
+COPY kmail-bridge/go.mod kmail-bridge/go.sum ./
+RUN go mod download
+COPY kmail-bridge/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags=-s -o /kmail-bridge .
+
 FROM debian:trixie
 
 ARG XPRA_CHANNEL=stable
@@ -35,6 +42,7 @@ COPY applications.menu /etc/xdg/menus/
 COPY mimeapps.list /etc/xdg/
 COPY fonts.conf /etc/fonts/local.conf
 COPY --from=gio-browse /src/libgiobrowse.so /usr/local/lib/gio/modules/
+COPY --from=kmail-bridge /kmail-bridge /usr/local/bin/
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY html5/default-settings.txt /etc/xpra/html5-client/
 COPY html5/kolmafia.js html5/kolmafia.css /usr/share/xpra/www/
@@ -48,6 +56,6 @@ ENV GIO_EXTRA_MODULES=/usr/local/lib/gio/modules
 
 VOLUME /home/kolmafia/.kolmafia /home/kolmafia/jars
 
-EXPOSE 8080 14500
+EXPOSE 8080 14500 9993 9465
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

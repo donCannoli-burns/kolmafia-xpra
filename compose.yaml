@@ -13,9 +13,15 @@ services:
       KOLMAFIA_UI_SCALE: ${KOLMAFIA_UI_SCALE:-1}
       JAVA_OPTS: ${JAVA_OPTS:-}
       KOLMAFIA_PUBLIC_URL: ${KOLMAFIA_PUBLIC_URL:-}
+      KMAIL_PASSWORD: ${KMAIL_PASSWORD:-}
+      KMAIL_HOSTNAME: ${KMAIL_HOSTNAME:-}
+      KMAIL_TLS_CERT: ${KMAIL_TLS_CERT:-}
+      KMAIL_TLS_KEY: ${KMAIL_TLS_KEY:-}
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${XPRA_PORT:-14500}:14500"
       - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+      - "${BIND_ADDRESS:-127.0.0.1}:${IMAP_PORT:-993}:9993"
+      - "${BIND_ADDRESS:-127.0.0.1}:${SMTP_PORT:-465}:9465"
     volumes:
       - ${KOLMAFIA_DIR:-./data}:/home/kolmafia/.kolmafia
       - jars:/home/kolmafia/jars
