@@ -51,6 +51,11 @@ mkdir -p "$(dirname "$dest")"
 # APFS clone where possible, so the copy costs next to no disk space.
 cp -Rc "$src" "$dest" 2>/dev/null || cp -R "$src" "$dest"
 
+# Xpra puts X11/lib on DYLD_LIBRARY_PATH and keeps it when it re-execs itself to reconnect, where
+# Mesa's libGL then shadows the system one and fails to load for want of libglapi, which Xpra
+# doesn't ship. Only Xvfb uses it, which an attaching client never runs.
+rm -f "$dest/Contents/Frameworks/X11/lib/libGL.dylib" "$dest/Contents/Frameworks/X11/lib/libGL.1.dylib"
+
 res="$dest/Contents/Resources/kolmafia-xpra"
 mkdir -p "$res"
 cp "$here/xpra-attach-authelia" "$here/kolmafia.png" "$here/kolmafia-macos.png" "$res/"
