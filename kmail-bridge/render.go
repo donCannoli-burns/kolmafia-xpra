@@ -28,9 +28,6 @@ func playerAddress(name string, id int) *mail.Address {
 	return &mail.Address{Name: name, Address: fmt.Sprintf("%d@%s", id, domain)}
 }
 
-// ImageFunc returns an item icon by file name, or nil if KoL doesn't have it.
-type ImageFunc func(name string) ([]byte, error)
-
 // attachment is an item or Meat received with a kmail. They're attached as their icons so mail
 // clients show them along the bottom like the game does. They're for show: sending them on
 // doesn't send anything.
@@ -40,13 +37,15 @@ type attachment struct {
 	itemID   int
 }
 
+var fileNameReplacer = strings.NewReplacer("/", "-", "\\", "-")
+
 func attachments(p ParsedKmail) []attachment {
 	var out []attachment
 	if p.Meat > 0 {
 		out = append(out, attachment{filename: commas(p.Meat) + " Meat", image: meatImage})
 	}
 	for _, it := range p.Items {
-		name := strings.NewReplacer("/", "-", "\\", "-").Replace(it.Name)
+		name := fileNameReplacer.Replace(it.Name)
 		if it.Quantity != 1 {
 			name = commas(it.Quantity) + " × " + name
 		}
@@ -55,7 +54,9 @@ func attachments(p ParsedKmail) []attachment {
 	return out
 }
 
-func RenderKmail(k Kmail, me *mail.Address, images ImageFunc) ([]byte, error) {
+// RenderKmail turns a kmail into an email. icons holds its attachments' icons by file name, with
+// nil where KoL doesn't have one.
+func RenderKmail(k Kmail, me *mail.Address, icons map[string][]byte) ([]byte, error) {
 	p := ParseKmail(k)
 
 	var h mail.Header
@@ -77,10 +78,7 @@ func RenderKmail(k Kmail, me *mail.Address, images ImageFunc) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := io.WriteString(w, body(p)); err != nil {
-			return nil, err
-		}
-		if err := w.Close(); err != nil {
+		if err := writePart(w, []byte(body(p))); err != nil {
 			return nil, err
 		}
 		return buf.Bytes(), nil
@@ -96,20 +94,12 @@ func RenderKmail(k Kmail, me *mail.Address, images ImageFunc) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := io.WriteString(tw, body(p)); err != nil {
-		return nil, err
-	}
-	if err := tw.Close(); err != nil {
+	if err := writePart(tw, []byte(body(p))); err != nil {
 		return nil, err
 	}
 
 	for _, a := range atts {
-		var img []byte
-		if a.image != "" {
-			if img, err = images(a.image); err != nil {
-				return nil, err
-			}
-		}
+		img := icons[a.image]
 		var ah mail.AttachmentHeader
 		if img != nil {
 			ah.SetContentType(mime.TypeByExtension(path.Ext(a.image)), nil)
@@ -125,10 +115,7 @@ func RenderKmail(k Kmail, me *mail.Address, images ImageFunc) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := aw.Write(img); err != nil {
-			return nil, err
-		}
-		if err := aw.Close(); err != nil {
+		if err := writePart(aw, img); err != nil {
 			return nil, err
 		}
 	}
@@ -136,6 +123,13 @@ func RenderKmail(k Kmail, me *mail.Address, images ImageFunc) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func writePart(w io.WriteCloser, b []byte) error {
+	if _, err := w.Write(b); err != nil {
+		return err
+	}
+	return w.Close()
 }
 
 // KoL has no subjects, so use the start of the message.

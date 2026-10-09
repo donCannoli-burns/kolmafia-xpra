@@ -15,8 +15,8 @@ func TestRenderAttachments(t *testing.T) {
 			`<center><table class="item" style="float: none" rel="id=99&s=0&q=0&d=0&g=0&t=1&n=1&m=0&p=0&u=u"><tr><td><img src="https://images.kingdomofloathing.com/itemimages/gone.gif" alt="a/b" title="a/b" class=hand ></td><td valign=center class=effect>You acquire an item: <b>a/b</b></td></tr></table></center>` +
 			`<center>You gain 1,000 Meat</center>`,
 	}
-	images := map[string][]byte{"toast.gif": []byte("TOAST"), "meat.gif": []byte("MEAT")}
-	raw, err := RenderKmail(k, playerAddress("Alice", 123), func(name string) ([]byte, error) { return images[name], nil })
+	icons := map[string][]byte{"toast.gif": []byte("TOAST"), "meat.gif": []byte("MEAT")}
+	raw, err := RenderKmail(k, playerAddress("Alice", 123), icons)
 	if err != nil {
 		t.Fatal(err)
 	}

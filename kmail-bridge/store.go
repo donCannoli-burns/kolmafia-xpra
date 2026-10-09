@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -155,28 +156,42 @@ func (b *Bridge) Sync(ctx context.Context) error {
 	}
 	playerID, _ := strconv.Atoi(s.PlayerID)
 
-	// Render new kmails before taking the account lock, since it can mean fetching icons.
+	// Fetch new kmails' icons before taking the account lock. If one can't be had, that kmail and
+	// later ones wait for the next sync, as UIDs have to arrive in order.
 	slices.SortFunc(kmails, func(x, y Kmail) int { return cmp.Compare(x.ID, y.ID) })
 	a.mu.Lock()
 	uidNext := a.mailboxLocked("INBOX").UIDNext
 	a.mu.Unlock()
-	me := playerAddress(s.Name, playerID)
-	rendered := map[uint32][]byte{}
-	var renderErr error
+	icons := map[string][]byte{}
+	upTo := imap.UID(math.MaxUint32)
+	var iconErr error
 	for _, k := range kmails {
 		if imap.UID(k.ID) < uidNext {
 			continue
 		}
-		raw, err := RenderKmail(k, me, func(name string) ([]byte, error) { return b.itemImage(ctx, name) })
-		if err != nil {
-			// Later kmails wait too, as UIDs have to arrive in order. This is retried next sync.
-			renderErr = fmt.Errorf("rendering kmail %d: %w", k.ID, err)
+		if err := b.fetchIcons(ctx, k, icons); err != nil {
+			upTo = imap.UID(k.ID)
+			iconErr = fmt.Errorf("fetching icons for kmail %d: %w", k.ID, err)
 			break
 		}
-		rendered[k.ID] = raw
 	}
 
-	return errors.Join(a.syncInbox(s.Name, playerID, kmails, len(kmails) >= inboxFetchCount, rendered), renderErr)
+	return errors.Join(a.syncInbox(s.Name, playerID, kmails, len(kmails) >= inboxFetchCount, icons, upTo), iconErr)
+}
+
+// fetchIcons adds the icons for a kmail's attachments to icons.
+func (b *Bridge) fetchIcons(ctx context.Context, k Kmail, icons map[string][]byte) error {
+	for _, at := range attachments(ParseKmail(k)) {
+		if _, ok := icons[at.image]; ok || at.image == "" {
+			continue
+		}
+		img, err := b.itemImage(ctx, at.image)
+		if err != nil {
+			return err
+		}
+		icons[at.image] = img
+	}
+	return nil
 }
 
 // itemImage returns an icon from the cache in the state directory, fetching it if needed. It's
@@ -295,7 +310,7 @@ func (a *Account) mailbox(name string) (*Mailbox, error) {
 	return nil, &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeNonExistent, Text: "No such mailbox"}
 }
 
-func (a *Account) syncInbox(name string, playerID int, kmails []Kmail, truncated bool, rendered map[uint32][]byte) error {
+func (a *Account) syncInbox(name string, playerID int, kmails []Kmail, truncated bool, icons map[string][]byte, upTo imap.UID) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -325,15 +340,20 @@ func (a *Account) syncInbox(name string, playerID int, kmails []Kmail, truncated
 		changed = true
 	}
 
-	// kmails is oldest first, and rendered stops at the first kmail that couldn't be.
+	// kmails is oldest first. From upTo on, they're waiting for their icons.
+	me := playerAddress(name, playerID)
 	for _, k := range kmails {
 		uid := imap.UID(k.ID)
+		if uid >= upTo {
+			break
+		}
 		if uid < inbox.UIDNext {
 			continue
 		}
-		raw, ok := rendered[k.ID]
-		if !ok {
-			break
+		raw, err := RenderKmail(k, me, icons)
+		if err != nil {
+			log.Printf("rendering kmail %d: %v", k.ID, err)
+			continue
 		}
 		inbox.Messages = append(inbox.Messages, &Message{UID: uid, Time: k.Time, Raw: raw})
 		inbox.UIDNext = uid + 1

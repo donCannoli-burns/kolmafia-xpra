@@ -45,9 +45,6 @@ var (
 
 // ItemImage fetches an item's icon from KoL's public image server, not through the relay.
 func (k *KoL) ItemImage(ctx context.Context, name string) ([]byte, error) {
-	if !imageNameRe.MatchString(name) {
-		return nil, errNoImage
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, k.images+name, nil)
 	if err != nil {
 		return nil, err
