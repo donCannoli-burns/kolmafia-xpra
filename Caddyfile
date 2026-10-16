@@ -13,6 +13,10 @@
 	handle {
 		# The relay's own / isn't the game.
 		rewrite / /game.php
+		# KoL serves its mobile layout when mob=1 is sent; phones get it without visiting gomobile.php.
+		@mobile header_regexp User-Agent (?i)android|iphone|ipod|ipad|mobile
+		# One Cookie line only: the relay keeps just the last Cookie header it reads.
+		request_header @mobile Cookie "{http.request.header.Cookie}; mob=1"
 		reverse_proxy 127.0.0.1:60080
 	}
 
