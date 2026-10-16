@@ -26,7 +26,7 @@ RUN apt-get update \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       xpra xpra-x11 xpra-html5 xserver-xorg-core xserver-xorg-video-dummy xauth python3-xdg \
-      openjdk-21-jre zenity jq caddy \
+      openjdk-25-jre zenity jq caddy \
       libgtk-3-0t64 \
       fonts-inter fonts-dejavu fonts-liberation fontconfig \
  && rm -rf /var/lib/apt/lists/*
