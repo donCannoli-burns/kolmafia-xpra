@@ -1,0 +1,5 @@
+# Non-canonical, downstream-only local stack policy.
+# Do not merge this into the upstream/default runtime.
+services:
+  kolmafia:
+    restart: "no"
