@@ -16,6 +16,43 @@ Both bind to `BIND_ADDRESS` (default `127.0.0.1`). Put `8080` behind your revers
 
 KoLmafia's data directory (settings, scripts, relay, images) is bind-mounted from `KOLMAFIA_DIR`, so an existing one can be used as-is. Downloaded KoLmafia jars go in the separate `jars` volume. Set `PUID`/`PGID` to the owner of the data directory.
 
+## Local Linux desktop: Go play plane (opt-in)
+
+This fork adds a single-instance desktop launcher and a **localhost-only Go reverse proxy** for a customizable play window. It does not remove the original Caddy gateway. The Go proxy serves editable HTML/CSS/JS from `playplane/web/` at `/play/`, and transparently forwards other paths, including Xpra WebSockets and KoL relay requests, to Caddy. It does not cache or retry gameplay requests.
+
+One-time setup from the repository directory:
+
+```sh
+# Keep your existing .env; create one only if missing.
+test -f .env || cp .env.example .env
+# Build the container once so the KoLmafia clean-exit fix is included.
+docker compose build kolmafia
+# Installs ~/Desktop/KoLmafia Play.desktop and an applications-menu entry.
+bash contrib/kol-playctl install
+```
+
+Double-click **KoLmafia Play**, or run `bash contrib/kol-playctl start`. Requirements: Docker Compose, Go 1.22+, `flock`, `curl`, and installed Chromium/Chrome/Brave/Edge. Set `KOL_PLAY_BROWSER=/absolute/path` to choose another Chromium-compatible executable. The browser uses a dedicated profile at `~/.local/share/kolmafia-play/browser-profile` without affecting your main browser profile.
+
+- The launcher acquires an exclusive lock and will **not** start a second copy. If `wmctrl` is installed, it also attempts to focus the existing window.
+- Closing the app-mode browser window stops the owned Go proxy and calls `docker compose stop -t 20 kolmafia`. Data volumes are preserved. For an intentionally persistent Docker session set `KOL_PLAY_STOP_ON_CLOSE=0`.
+- `bash contrib/kol-playctl stop` requests a clean shutdown of the owned session; `bash contrib/kol-playctl status` shows status.
+- Browser UI defaults to `http://127.0.0.1:18080/play/`; container Caddy remains `http://127.0.0.1:8080`. `KOL_PLAY_PORT` and `WEB_PORT` can change these local ports. Desktop mode requires `BIND_ADDRESS=127.0.0.1`.
+- Edit `playplane/web/index.html`, `style.css`, or `app.js` while running and refresh to see changes. Desktop, Relay, and Split views are provided. If a relay or Xpra page forbids iframe embedding, use the provided full-page links.
+- `KOLMAFIA_RESTART_POLICY=no` is the local default. Always-on server owners can explicitly set `KOLMAFIA_RESTART_POLICY=unless-stopped`, but that is intentionally **not** the desktop behavior.
+- Explicit KoLmafia version changes still restart Java. Closing KoLmafia normally does not. No login or game-state automation has been added.
+
+`go-webui` is a browser/WebView **controller**, not a small independent web rendering engine; the dedicated Chromium app window here gives a predictable close event without introducing a new GUI dependency. The Go reverse proxy uses only the standard library rather than adding another caching/load-balancing proxy to a stateful game relay.
+
+### Development checks
+
+```sh
+go test ./...
+go vet ./...
+bash -n contrib/kol-playctl
+```
+
+**Caution:** The launcher owns the local `kolmafia` Compose service and stops it on close, even if it was already running before launch. Do not use this desktop mode against a shared/remote KoLmafia service. Validate shutdown with your actual Docker/Xpra browser stack before relying on it for a live session.
+
 ## Versions
 
 The KoLmafia version is chosen from inside the session: the "KoLmafia version" button in the browser, Start → KoLmafia → KoLmafia Version in Linux/Windows Xpra clients, or Server → Run Command → `kolmafia-version` on macOS. It defaults to tracking the latest release, and offers to update when a new one comes out.
