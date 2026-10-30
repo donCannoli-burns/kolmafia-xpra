@@ -1,5 +1,7 @@
 # kolmafia-xpra
 
+> **Non-canonical downstream branch:** `downstream/kolstack-watersheep` adds a local host WaterSheep launcher and Xpra stack controls. This is **not** the upstream/default runtime and is not proposed for merge. See [DOWNSTREAM-WATERSHEEP.md](DOWNSTREAM-WATERSHEEP.md). The original instructions below describe canonical Xpra behavior.
+
 KoLmafia running under [xpra](https://xpra.org), usable from a browser or the native Xpra client.
 
 ```sh
