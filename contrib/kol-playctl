@@ -11,6 +11,7 @@ PIDFILE="$RUNTIME/kol-playctl.pid"
 PROXY_PORT="${KOL_PLAY_PORT:-18080}"
 PROXY_PID=''
 BROWSER_PID=''
+MONITOR_PID=''
 DOCKER_OWNED=0
 
 info() { printf '[kol-play] %s\n' "$*"; }
@@ -47,6 +48,7 @@ compose() { docker compose --project-directory "$ROOT" -f "$ROOT/compose.yaml" "
 cleanup() {
     local status=$?
     trap - EXIT INT TERM HUP
+    if [[ -n "$MONITOR_PID" ]]; then kill "$MONITOR_PID" 2>/dev/null || true; wait "$MONITOR_PID" 2>/dev/null || true; fi
     if [[ -n "$BROWSER_PID" ]]; then kill "$BROWSER_PID" 2>/dev/null || true; wait "$BROWSER_PID" 2>/dev/null || true; fi
     if [[ -n "$PROXY_PID" ]]; then kill "$PROXY_PID" 2>/dev/null || true; wait "$PROXY_PID" 2>/dev/null || true; fi
     if [[ "$DOCKER_OWNED" == 1 && "${KOL_PLAY_STOP_ON_CLOSE:-1}" == 1 ]]; then
@@ -113,6 +115,18 @@ start() {
         --class=KoLmafiaPlay --no-first-run --no-default-browser-check \
         --disable-background-mode --disable-extensions &
     BROWSER_PID=$!
+    # Xpra exits when KoLmafia closes. End the play session in that direction too.
+    (
+        while kill -0 "$BROWSER_PID" 2>/dev/null; do
+            if [[ "$(compose ps --status running --services kolmafia 2>/dev/null)" != kolmafia ]] || ! kill -0 "$PROXY_PID" 2>/dev/null; then
+                info 'KoLmafia or play gateway exited; closing the play window.'
+                kill "$BROWSER_PID" 2>/dev/null || true
+                break
+            fi
+            sleep 2
+        done
+    ) &
+    MONITOR_PID=$!
     wait "$BROWSER_PID" || true
     BROWSER_PID=''
     info 'Play window closed.'
