@@ -36,10 +36,12 @@ find_browser() {
         return
     fi
     local exe
-    for exe in chromium chromium-browser google-chrome-stable google-chrome brave-browser microsoft-edge; do
+    # Prefer GNOME Web's native application-mode WebKit window if present.
+    # Existing Chromium-family installs and Firefox work too.
+    for exe in epiphany chromium chromium-browser google-chrome-stable google-chrome brave-browser microsoft-edge firefox firefox-esr; do
         if command -v "$exe" >/dev/null 2>&1; then command -v "$exe"; return; fi
     done
-    error 'Chromium/Chrome not found. Install one, or set KOL_PLAY_BROWSER=/path/to/browser.'
+    error 'No supported browser found (Epiphany, Chromium-family, or Firefox). Set KOL_PLAY_BROWSER=/absolute/path/to/browser.'
     return 1
 }
 
@@ -109,11 +111,37 @@ start() {
     done
     if ((n==40)); then error 'Go proxy not ready'; exit 1; fi
     local profile="$HOME/.local/share/kolmafia-play/browser-profile"
+    local url="http://127.0.0.1:$PROXY_PORT/play/"
+    local browser_mode="${KOL_PLAY_BROWSER_MODE:-}"
+    if [[ -z "$browser_mode" ]]; then
+        case "${browser##*/}" in
+            epiphany) browser_mode=epiphany ;;
+            firefox|firefox-esr) browser_mode=firefox ;;
+            *) browser_mode=chromium ;;
+        esac
+    fi
+    case "$browser_mode" in
+        epiphany|firefox|chromium) ;;
+        *) error 'KOL_PLAY_BROWSER_MODE must be epiphany, firefox, or chromium'; exit 1 ;;
+    esac
     mkdir -p "$profile"; chmod 700 "$profile"
-    info 'Opening isolated play window (close it to stop the session)...'
-    "$browser" --user-data-dir="$profile" --app="http://127.0.0.1:$PROXY_PORT/play/" \
-        --class=KoLmafiaPlay --no-first-run --no-default-browser-check \
-        --disable-background-mode --disable-extensions &
+    info "Opening isolated $browser_mode play window (close it to stop the session)..."
+    case "$browser_mode" in
+        epiphany)
+            # WebKitGTK browser with a real app-mode window and dedicated profile.
+            "$browser" --application-mode --profile="$profile" "$url" &
+            ;;
+        firefox)
+            # --no-remote keeps it independent of any main Firefox instance.
+            # Firefox has no equivalent to Chromium's --app flag; window may show toolbars.
+            "$browser" --no-remote --profile "$profile" --new-window "$url" &
+            ;;
+        chromium)
+            "$browser" --user-data-dir="$profile" --app="$url" \
+                --class=KoLmafiaPlay --no-first-run --no-default-browser-check \
+                --disable-background-mode --disable-extensions &
+            ;;
+    esac
     BROWSER_PID=$!
     # Xpra exits when KoLmafia closes. End the play session in that direction too.
     (
