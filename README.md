@@ -31,7 +31,7 @@ docker compose build kolmafia
 bash contrib/kol-playctl install
 ```
 
-Double-click **KoLmafia Play**, or run `bash contrib/kol-playctl start`. Requirements: Docker Compose, Go 1.22+, `flock`, `curl`, and installed Chromium/Chrome/Brave/Edge. Set `KOL_PLAY_BROWSER=/absolute/path` to choose another Chromium-compatible executable. The browser uses a dedicated profile at `~/.local/share/kolmafia-play/browser-profile` without affecting your main browser profile.
+Double-click **KoLmafia Play**, or run `bash contrib/kol-playctl start`. Requirements: Docker Compose, Go 1.22+, `flock`, `curl`, and one locally installed browser: GNOME Web/Epiphany (preferred when available), Chromium/Chrome/Brave/Edge, or Firefox/Firefox ESR. The browser uses a dedicated profile at `~/.local/share/kolmafia-play/browser-profile`, without affecting your main browser profile. Set `KOL_PLAY_BROWSER=/absolute/path` to select an executable, optionally with `KOL_PLAY_BROWSER_MODE=epiphany|firefox|chromium` when the executable name cannot be inferred. Firefox opens an independent window but may retain its browser toolbar; Epiphany and Chromium use application mode. Browser executables installed only through Flatpak or Snap may require additional wrapper/portal handling and are not automatically detected.
 
 - The launcher acquires an exclusive lock and will **not** start a second copy. If `wmctrl` is installed, it also attempts to focus the existing window.
 - Closing the app-mode browser window stops the owned Go proxy and calls `docker compose stop -t 20 kolmafia`. Data volumes are preserved. For an intentionally persistent Docker session set `KOL_PLAY_STOP_ON_CLOSE=0`.
