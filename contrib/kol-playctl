@@ -38,7 +38,7 @@ find_browser() {
     local exe
     # Prefer GNOME Web's native application-mode WebKit window if present.
     # Existing Chromium-family installs and Firefox work too.
-    for exe in epiphany chromium chromium-browser google-chrome-stable google-chrome brave-browser microsoft-edge firefox firefox-esr; do
+    for exe in thorium-browser thorium-browser-stable thorium epiphany chromium chromium-browser google-chrome-stable google-chrome brave-browser microsoft-edge firefox firefox-esr; do
         if command -v "$exe" >/dev/null 2>&1; then command -v "$exe"; return; fi
     done
     error 'No supported browser found (Epiphany, Chromium-family, or Firefox). Set KOL_PLAY_BROWSER=/absolute/path/to/browser.'
