@@ -21,24 +21,24 @@ KoLmafia's data directory (settings, scripts, relay, images) is bind-mounted fro
 **Status: host-verified for the Thorium play-window close path.** This is a
 source-code checkpoint, **not** a published release or a pinned Docker image.
 
-- Checkpoint branch: [\`checkpoint/clean-kill-live-tested-20261030\`](https://github.com/donCannoli-burns/kolmafia-xpra/tree/checkpoint/clean-kill-live-tested-20261030)
-- Exact tested source commit: [\`746512d7dcf01e1d5b12a01c8ab800898a2affad\`](https://github.com/donCannoli-burns/kolmafia-xpra/commit/746512d7dcf01e1d5b12a01c8ab800898a2affad)
-- Development continues on \`feature/clean-exit-go-playplane-20261030\` ([draft PR #1](https://github.com/donCannoli-burns/kolmafia-xpra/pull/1)). The checkpoint branch must not be rebased or advanced; use the commit SHA for exact recovery.
-- Test environment: Linux desktop, local Docker Compose, KoLmafia Xpra, locally installed \`/usr/bin/thorium-browser\`, and Go play-plane proxy on \`127.0.0.1:18080\`.
+- Checkpoint branch: [`checkpoint/clean-kill-live-tested-20261030`](https://github.com/donCannoli-burns/kolmafia-xpra/tree/checkpoint/clean-kill-live-tested-20261030)
+- Exact tested source commit: [`746512d7dcf01e1d5b12a01c8ab800898a2affad`](https://github.com/donCannoli-burns/kolmafia-xpra/commit/746512d7dcf01e1d5b12a01c8ab800898a2affad)
+- Development continues on `feature/clean-exit-go-playplane-20261030` ([draft PR #1](https://github.com/donCannoli-burns/kolmafia-xpra/pull/1)). The checkpoint branch must not be rebased or advanced; use the commit SHA for exact recovery.
+- Test environment: Linux desktop, local Docker Compose, KoLmafia Xpra, locally installed `/usr/bin/thorium-browser`, and Go play-plane proxy on `127.0.0.1:18080`.
 
 ### Observed live results
 
 | Verification | Observed |
 | --- | --- |
-| Start via \`bash contrib/kol-playctl start\` | Container, Go proxy, and isolated Thorium app window launched |
-| Browser UI, Caddy Xpra, Xpra through Go | HTTP 200 from \`/play/\`, \`8080/xpra/\`, and \`18080/xpra/\` |
+| Start via `bash contrib/kol-playctl start` | Container, Go proxy, and isolated Thorium app window launched |
+| Browser UI, Caddy Xpra, Xpra through Go | HTTP 200 from `/play/`, `8080/xpra/`, and `18080/xpra/` |
 | Xpra presentation | KoLmafia desktop when connected; Xpra connection option when disconnected |
-| Second launch while active | Refused: \`Session already open (not launching a duplicate)\` |
+| Second launch while active | Refused: `Session already open (not launching a duplicate)` |
 | Process ownership | One controller with Go proxy, Thorium, and monitor as children |
-| \`fuser\` lock ownership | **Only the main controller** held \`kol-playctl.lock\` after the file-descriptor fix |
-| Docker restart policy | \`no\` |
+| `fuser` lock ownership | **Only the main controller** held `kol-playctl.lock` after the file-descriptor fix |
+| Docker restart policy | `no` |
 | Close dedicated Thorium play window | Controller, Thorium play instance, and Go proxy exited; port 18080 refused connections |
-| Container after window close | \`Exited (143)\` — expected SIGTERM-style shutdown from Compose stop |
+| Container after window close | `Exited (143)` — expected SIGTERM-style shutdown from Compose stop |
 | Lock after window close | No lock owners |
 
 **Coverage limits:** This verifies **closing the dedicated play window**. It
@@ -46,31 +46,31 @@ does not yet establish that closing KoLmafia *inside Xpra*, explicitly
 switching KoLmafia versions, sudden host power loss, or every browser backend
 has the same behavior. The Xpra connection page may still require manual
 Connect. No container image digest was recorded during this live run, so a
-future \`stable\` image rebuild may differ from the tested runtime.
+future `stable` image rebuild may differ from the tested runtime.
 
 ### Recover the exact source checkpoint
 
 On a clean working tree, from this repository:
 
-\`\`\`sh
+```sh
 git fetch origin checkpoint/clean-kill-live-tested-20261030
 git switch -c clean-kill-recovery FETCH_HEAD
 git rev-parse HEAD
 # Expected: 746512d7dcf01e1d5b12a01c8ab800898a2affad
-\`\`\`
+```
 
-Review \`git status --short\` first and preserve any local modifications
+Review `git status --short` first and preserve any local modifications
 before switching. The source checkpoint does not restore Docker volumes or
-replace the local \`.env\`; preserve those separately.
+replace the local `.env`; preserve those separately.
 
 To inspect current lifecycle state without starting a second session:
 
-\`\`\`sh
+```sh
 bash contrib/kol-playctl status
 docker compose --project-directory "$PWD" -f compose.yaml ps -a
 curl -fsS --max-time 2 http://127.0.0.1:18080/healthz || echo 'Proxy not listening'
-fuser -v "\${XDG_RUNTIME_DIR:-$HOME/.cache/kolmafia-play}/kol-playctl.lock" 2>&1 || true
-\`\`\`
+fuser -v "${XDG_RUNTIME_DIR:-$HOME/.cache/kolmafia-play}/kol-playctl.lock" 2>&1 || true
+```
 
 ## Local Linux desktop: Go play plane (opt-in)
 
