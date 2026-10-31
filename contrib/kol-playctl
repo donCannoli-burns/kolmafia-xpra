@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+# Desktop-owned, single-instance KoLmafia/Xpra + Go proxy + app-mode browser.
+set -Eeuo pipefail
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+SELF="$ROOT/contrib/kol-playctl"
+RUNTIME="${XDG_RUNTIME_DIR:-$HOME/.cache/kolmafia-play}"
+mkdir -p -- "$RUNTIME"
+chmod 700 "$RUNTIME" 2>/dev/null || true
+LOCK="$RUNTIME/kol-playctl.lock"
+PIDFILE="$RUNTIME/kol-playctl.pid"
+PROXY_PORT="${KOL_PLAY_PORT:-18080}"
+PROXY_PID=''
+BROWSER_PID=''
+MONITOR_PID=''
+DOCKER_OWNED=0
+
+info() { printf '[kol-play] %s\n' "$*"; }
+error() { printf '[kol-play] ERROR: %s\n' "$*" >&2; }
+needs() { command -v "$1" >/dev/null 2>&1 || { error "missing dependency: $1"; exit 1; }; }
+
+# Read only the one value we need; never source .env as executable shell code.
+web_port() {
+    local port="${WEB_PORT:-}"
+    if [[ -z "$port" && -f "$ROOT/.env" ]]; then
+        port="$(sed -n 's/^WEB_PORT=//p' "$ROOT/.env" | tail -n 1 | tr -d '\r\"\047')"
+    fi
+    port="${port:-8080}"
+    [[ "$port" =~ ^[0-9]{1,5}$ ]] && (( 10#$port >= 1 && 10#$port <= 65535 )) || { error "invalid WEB_PORT: $port"; exit 1; }
+    printf '%s' "$port"
+}
+
+find_browser() {
+    if [[ -n "${KOL_PLAY_BROWSER:-}" ]]; then
+        [[ -x "$KOL_PLAY_BROWSER" ]] || { error "KOL_PLAY_BROWSER must be an executable path"; return 1; }
+        printf '%s' "$KOL_PLAY_BROWSER"
+        return
+    fi
+    local exe
+    # Prefer GNOME Web's native application-mode WebKit window if present.
+    # Existing Chromium-family installs and Firefox work too.
+    for exe in thorium-browser thorium-browser-stable thorium epiphany chromium chromium-browser google-chrome-stable google-chrome brave-browser microsoft-edge firefox firefox-esr; do
+        if command -v "$exe" >/dev/null 2>&1; then command -v "$exe"; return; fi
+    done
+    error 'No supported browser found (Epiphany, Chromium-family, or Firefox). Set KOL_PLAY_BROWSER=/absolute/path/to/browser.'
+    return 1
+}
+
+compose() { docker compose --project-directory "$ROOT" -f "$ROOT/compose.yaml" "$@"; }
+
+cleanup() {
+    local status=$?
+    trap - EXIT INT TERM HUP
+    if [[ -n "$MONITOR_PID" ]]; then kill "$MONITOR_PID" 2>/dev/null || true; wait "$MONITOR_PID" 2>/dev/null || true; fi
+    if [[ -n "$BROWSER_PID" ]]; then kill "$BROWSER_PID" 2>/dev/null || true; wait "$BROWSER_PID" 2>/dev/null || true; fi
+    if [[ -n "$PROXY_PID" ]]; then kill "$PROXY_PID" 2>/dev/null || true; wait "$PROXY_PID" 2>/dev/null || true; fi
+    if [[ "$DOCKER_OWNED" == 1 && "${KOL_PLAY_STOP_ON_CLOSE:-1}" == 1 ]]; then
+        info 'Stopping KoLmafia (preserving volumes and data)...'
+        compose stop -t 20 kolmafia || true
+    fi
+    rm -f -- "$PIDFILE"
+    exit "$status"
+}
+
+start() {
+    needs flock; needs go; needs docker; needs curl
+    [[ "$PROXY_PORT" =~ ^[0-9]{1,5}$ ]] && (( 10#$PROXY_PORT >= 1 && 10#$PROXY_PORT <= 65535 )) || { error 'invalid KOL_PLAY_PORT'; exit 1; }
+    local browser; browser="$(find_browser)"
+    exec 9>"$LOCK"
+    if ! flock -n 9; then
+        info 'Session already open (not launching a duplicate).'
+        if command -v wmctrl >/dev/null 2>&1; then wmctrl -xa KoLmafiaPlay 2>/dev/null || true; fi
+        return 0
+    fi
+    printf '%s\n' "$$" > "$PIDFILE"
+    trap cleanup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM HUP
+    local port; port="$(web_port)"
+    local bind_address="${BIND_ADDRESS:-}"
+    if [[ -z "$bind_address" && -f "$ROOT/.env" ]]; then
+        bind_address="$(sed -n 's/^BIND_ADDRESS=//p' "$ROOT/.env" | tail -n 1 | tr -d '\r\"\047')"
+    fi
+    bind_address="${bind_address:-127.0.0.1}"
+    [[ "$bind_address" == 127.0.0.1 ]] || { error 'Desktop play mode requires BIND_ADDRESS=127.0.0.1'; exit 1; }
+    [[ -f "$ROOT/.env" ]] || { error 'missing .env; run cp .env.example .env in the repository'; exit 1; }
+
+    mkdir -p "$ROOT/bin"
+    if [[ ! -x "$ROOT/bin/kol-playplane" || "$ROOT/cmd/kol-playplane/main.go" -nt "$ROOT/bin/kol-playplane" ]]; then
+        info 'Building Go play-plane gateway...'
+        (cd "$ROOT" && go build -o bin/kol-playplane ./cmd/kol-playplane)
+    fi
+    info 'Starting KoLmafia...'
+    compose up -d --no-build kolmafia
+    DOCKER_OWNED=1
+    info 'Waiting for Xpra gateway...'
+    local n
+    for ((n=0; n<90; n++)); do
+        if curl -fsS -m 2 -o /dev/null "http://127.0.0.1:$port/xpra/"; then break; fi
+        sleep 1
+    done
+    if ((n==90)); then error 'Xpra gateway did not become ready'; exit 1; fi
+    "$ROOT/bin/kol-playplane" \
+        -listen "127.0.0.1:$PROXY_PORT" \
+        -upstream "http://127.0.0.1:$port" \
+        -assets "$ROOT/playplane/web" 9>&- &
+    PROXY_PID=$!
+    for ((n=0; n<40; n++)); do
+        if ! kill -0 "$PROXY_PID" 2>/dev/null; then error 'Go proxy exited before readiness'; exit 1; fi
+        if [[ "$(curl -fsS -m 1 "http://127.0.0.1:$PROXY_PORT/healthz" 2>/dev/null || true)" == kol-playplane ]]; then break; fi
+        sleep 0.25
+    done
+    if ((n==40)); then error 'Go proxy not ready'; exit 1; fi
+    local profile="$HOME/.local/share/kolmafia-play/browser-profile"
+    local url="http://127.0.0.1:$PROXY_PORT/play/"
+    local browser_mode="${KOL_PLAY_BROWSER_MODE:-}"
+    if [[ -z "$browser_mode" ]]; then
+        case "${browser##*/}" in
+            epiphany) browser_mode=epiphany ;;
+            firefox|firefox-esr) browser_mode=firefox ;;
+            *) browser_mode=chromium ;;
+        esac
+    fi
+    case "$browser_mode" in
+        epiphany|firefox|chromium) ;;
+        *) error 'KOL_PLAY_BROWSER_MODE must be epiphany, firefox, or chromium'; exit 1 ;;
+    esac
+    mkdir -p "$profile"; chmod 700 "$profile"
+    info "Opening isolated $browser_mode play window (close it to stop the session)..."
+    case "$browser_mode" in
+        epiphany)
+            # WebKitGTK browser with a real app-mode window and dedicated profile.
+            "$browser" --application-mode --profile="$profile" "$url" 9>&- &
+            ;;
+        firefox)
+            # --no-remote keeps it independent of any main Firefox instance.
+            # Firefox has no equivalent to Chromium's --app flag; window may show toolbars.
+            "$browser" --no-remote --profile "$profile" --new-window "$url" 9>&- &
+            ;;
+        chromium)
+            "$browser" --user-data-dir="$profile" --app="$url" \
+                --class=KoLmafiaPlay --no-first-run --no-default-browser-check \
+                --disable-background-mode --disable-extensions 9>&- &
+            ;;
+    esac
+    BROWSER_PID=$!
+    # Xpra exits when KoLmafia closes. End the play session in that direction too.
+    (
+        while kill -0 "$BROWSER_PID" 2>/dev/null; do
+            if [[ "$(compose ps --status running --services kolmafia 2>/dev/null)" != kolmafia ]] || ! kill -0 "$PROXY_PID" 2>/dev/null; then
+                info 'KoLmafia or play gateway exited; closing the play window.'
+                kill "$BROWSER_PID" 2>/dev/null || true
+                break
+            fi
+            sleep 2
+        done
+    ) 9>&- &
+    MONITOR_PID=$!
+    wait "$BROWSER_PID" || true
+    BROWSER_PID=''
+    info 'Play window closed.'
+}
+
+stop() {
+    local pid='' cmd=''
+    [[ -f "$PIDFILE" ]] && pid="$(cat "$PIDFILE")"
+    if [[ "$pid" =~ ^[0-9]+$ && -r "/proc/$pid/cmdline" ]]; then
+        cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline")"
+        if [[ "$cmd" == *"$SELF"* ]]; then
+            info "Stopping session controller $pid..."
+            kill -TERM "$pid"
+            return 0
+        fi
+    fi
+    error 'No owned play session found; refusing to kill unrelated processes.'
+    return 1
+}
+
+install() {
+    local desktop="$HOME/Desktop/KoLmafia Play.desktop"
+    local apps="$HOME/.local/share/applications/kolmafia-play.desktop"
+    mkdir -p "$HOME/Desktop" "$(dirname "$apps")"
+    cat > "$apps" <<EODESKTOP
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=KoLmafia Play
+Comment=Start KoLmafia in a dedicated play plane; close to stop
+Exec="$SELF" start
+Icon=applications-games
+Terminal=false
+Categories=Game;
+StartupNotify=true
+EODESKTOP
+    cp "$apps" "$desktop"
+    chmod +x "$apps" "$desktop" "$SELF"
+    if command -v gio >/dev/null 2>&1; then gio set "$desktop" metadata::trusted true 2>/dev/null || true; fi
+    info "Desktop shortcut: $desktop"
+}
+
+case "${1:-start}" in
+    start) start ;;
+    stop) stop ;;
+    status) if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then info "Controller running, PID $(cat "$PIDFILE")"; else info 'No controller running'; fi; compose ps ;;
+    install) install ;;
+    *) echo 'usage: kol-playctl [install|start|stop|status]' >&2; exit 2 ;;
+esac

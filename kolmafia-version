@@ -42,8 +42,16 @@ fetch() {
   mv "$jar.part" "$jar"
 }
 
+restartfile="$XDG_RUNTIME_DIR/kolmafia.restart"
+
 restart() {
-  [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null
+  # Only an explicit version change/update is authorized to restart Java.
+  [ -f "$pidfile" ] || return 0
+  pid=$(cat "$pidfile" 2>/dev/null) || return 0
+  case $pid in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$pid" 2>/dev/null || return 0
+  : > "$restartfile"
+  kill "$pid" 2>/dev/null || { rm -f "$restartfile"; return 1; }
 }
 
 set_version() {
@@ -115,7 +123,10 @@ watch() {
 }
 
 launch() {
+  rm -f "$restartfile"
   watch &
+  watcher=$!
+  trap 'kill "$watcher" 2>/dev/null || :' EXIT
   while true; do
     sel=$(selected)
     latest=$(latest_release)
@@ -142,8 +153,17 @@ launch() {
       offer_update "$want" "$latest" &
     fi
     java -Dsun.java2d.uiScale="${KOLMAFIA_UI_SCALE:-1}" ${JAVA_OPTS:-} -jar "$jars/KoLmafia-$want.jar" &
-    echo $! > "$pidfile"
-    wait $!
+    java_pid=$!
+    echo "$java_pid" > "$pidfile"
+    wait "$java_pid" || :
+    rm -f "$pidfile" "$running"
+    if [ -f "$restartfile" ]; then
+      rm -f "$restartfile"
+      echo "KoLmafia update explicitly requested; restarting"
+    else
+      echo "KoLmafia closed; ending Xpra session"
+      break
+    fi
   done
 }
 
