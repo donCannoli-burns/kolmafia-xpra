@@ -102,7 +102,7 @@ start() {
     "$ROOT/bin/kol-playplane" \
         -listen "127.0.0.1:$PROXY_PORT" \
         -upstream "http://127.0.0.1:$port" \
-        -assets "$ROOT/playplane/web" &
+        -assets "$ROOT/playplane/web" 9>&- &
     PROXY_PID=$!
     for ((n=0; n<40; n++)); do
         if ! kill -0 "$PROXY_PID" 2>/dev/null; then error 'Go proxy exited before readiness'; exit 1; fi
@@ -129,17 +129,17 @@ start() {
     case "$browser_mode" in
         epiphany)
             # WebKitGTK browser with a real app-mode window and dedicated profile.
-            "$browser" --application-mode --profile="$profile" "$url" &
+            "$browser" --application-mode --profile="$profile" "$url" 9>&- &
             ;;
         firefox)
             # --no-remote keeps it independent of any main Firefox instance.
             # Firefox has no equivalent to Chromium's --app flag; window may show toolbars.
-            "$browser" --no-remote --profile "$profile" --new-window "$url" &
+            "$browser" --no-remote --profile "$profile" --new-window "$url" 9>&- &
             ;;
         chromium)
             "$browser" --user-data-dir="$profile" --app="$url" \
                 --class=KoLmafiaPlay --no-first-run --no-default-browser-check \
-                --disable-background-mode --disable-extensions &
+                --disable-background-mode --disable-extensions 9>&- &
             ;;
     esac
     BROWSER_PID=$!
@@ -153,7 +153,7 @@ start() {
             fi
             sleep 2
         done
-    ) &
+    ) 9>&- &
     MONITOR_PID=$!
     wait "$BROWSER_PID" || true
     BROWSER_PID=''
