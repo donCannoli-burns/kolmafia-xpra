@@ -16,6 +16,62 @@ Both bind to `BIND_ADDRESS` (default `127.0.0.1`). Put `8080` behind your revers
 
 KoLmafia's data directory (settings, scripts, relay, images) is bind-mounted from `KOLMAFIA_DIR`, so an existing one can be used as-is. Downloaded KoLmafia jars go in the separate `jars` volume. Set `PUID`/`PGID` to the owner of the data directory.
 
+## Verified clean-kill checkpoint — 2026-10-30
+
+**Status: host-verified for the Thorium play-window close path.** This is a
+source-code checkpoint, **not** a published release or a pinned Docker image.
+
+- Checkpoint branch: [\`checkpoint/clean-kill-live-tested-20261030\`](https://github.com/donCannoli-burns/kolmafia-xpra/tree/checkpoint/clean-kill-live-tested-20261030)
+- Exact tested source commit: [\`746512d7dcf01e1d5b12a01c8ab800898a2affad\`](https://github.com/donCannoli-burns/kolmafia-xpra/commit/746512d7dcf01e1d5b12a01c8ab800898a2affad)
+- Development continues on \`feature/clean-exit-go-playplane-20261030\` ([draft PR #1](https://github.com/donCannoli-burns/kolmafia-xpra/pull/1)). The checkpoint branch must not be rebased or advanced; use the commit SHA for exact recovery.
+- Test environment: Linux desktop, local Docker Compose, KoLmafia Xpra, locally installed \`/usr/bin/thorium-browser\`, and Go play-plane proxy on \`127.0.0.1:18080\`.
+
+### Observed live results
+
+| Verification | Observed |
+| --- | --- |
+| Start via \`bash contrib/kol-playctl start\` | Container, Go proxy, and isolated Thorium app window launched |
+| Browser UI, Caddy Xpra, Xpra through Go | HTTP 200 from \`/play/\`, \`8080/xpra/\`, and \`18080/xpra/\` |
+| Xpra presentation | KoLmafia desktop when connected; Xpra connection option when disconnected |
+| Second launch while active | Refused: \`Session already open (not launching a duplicate)\` |
+| Process ownership | One controller with Go proxy, Thorium, and monitor as children |
+| \`fuser\` lock ownership | **Only the main controller** held \`kol-playctl.lock\` after the file-descriptor fix |
+| Docker restart policy | \`no\` |
+| Close dedicated Thorium play window | Controller, Thorium play instance, and Go proxy exited; port 18080 refused connections |
+| Container after window close | \`Exited (143)\` — expected SIGTERM-style shutdown from Compose stop |
+| Lock after window close | No lock owners |
+
+**Coverage limits:** This verifies **closing the dedicated play window**. It
+does not yet establish that closing KoLmafia *inside Xpra*, explicitly
+switching KoLmafia versions, sudden host power loss, or every browser backend
+has the same behavior. The Xpra connection page may still require manual
+Connect. No container image digest was recorded during this live run, so a
+future \`stable\` image rebuild may differ from the tested runtime.
+
+### Recover the exact source checkpoint
+
+On a clean working tree, from this repository:
+
+\`\`\`sh
+git fetch origin checkpoint/clean-kill-live-tested-20261030
+git switch -c clean-kill-recovery FETCH_HEAD
+git rev-parse HEAD
+# Expected: 746512d7dcf01e1d5b12a01c8ab800898a2affad
+\`\`\`
+
+Review \`git status --short\` first and preserve any local modifications
+before switching. The source checkpoint does not restore Docker volumes or
+replace the local \`.env\`; preserve those separately.
+
+To inspect current lifecycle state without starting a second session:
+
+\`\`\`sh
+bash contrib/kol-playctl status
+docker compose --project-directory "$PWD" -f compose.yaml ps -a
+curl -fsS --max-time 2 http://127.0.0.1:18080/healthz || echo 'Proxy not listening'
+fuser -v "\${XDG_RUNTIME_DIR:-$HOME/.cache/kolmafia-play}/kol-playctl.lock" 2>&1 || true
+\`\`\`
+
 ## Local Linux desktop: Go play plane (opt-in)
 
 This fork adds a single-instance desktop launcher and a **localhost-only Go reverse proxy** for a customizable play window. It does not remove the original Caddy gateway. The Go proxy serves editable HTML/CSS/JS from `playplane/web/` at `/play/`, and transparently forwards other paths, including Xpra WebSockets and KoL relay requests, to Caddy. It does not cache or retry gameplay requests.
@@ -31,7 +87,7 @@ docker compose build kolmafia
 bash contrib/kol-playctl install
 ```
 
-Double-click **KoLmafia Play**, or run `bash contrib/kol-playctl start`. Requirements: Docker Compose, Go 1.22+, `flock`, `curl`, and one locally installed browser: GNOME Web/Epiphany (preferred when available), Chromium/Chrome/Brave/Edge, or Firefox/Firefox ESR. The browser uses a dedicated profile at `~/.local/share/kolmafia-play/browser-profile`, without affecting your main browser profile. Set `KOL_PLAY_BROWSER=/absolute/path` to select an executable, optionally with `KOL_PLAY_BROWSER_MODE=epiphany|firefox|chromium` when the executable name cannot be inferred. Firefox opens an independent window but may retain its browser toolbar; Epiphany and Chromium use application mode. Browser executables installed only through Flatpak or Snap may require additional wrapper/portal handling and are not automatically detected.
+Double-click **KoLmafia Play**, or run `bash contrib/kol-playctl start`. Requirements: Docker Compose, Go 1.22+, `flock`, `curl`, and one locally installed browser: Thorium (auto-detected first), GNOME Web/Epiphany, Chromium/Chrome/Brave/Edge, or Firefox/Firefox ESR. The browser uses a dedicated profile at `~/.local/share/kolmafia-play/browser-profile`, without affecting your main browser profile. Set `KOL_PLAY_BROWSER=/absolute/path` to select an executable, optionally with `KOL_PLAY_BROWSER_MODE=epiphany|firefox|chromium` when the executable name cannot be inferred. Firefox opens an independent window but may retain its browser toolbar; Epiphany and Chromium use application mode. Browser executables installed only through Flatpak or Snap may require additional wrapper/portal handling and are not automatically detected.
 
 - The launcher acquires an exclusive lock and will **not** start a second copy. If `wmctrl` is installed, it also attempts to focus the existing window.
 - Closing the app-mode browser window stops the owned Go proxy and calls `docker compose stop -t 20 kolmafia`. Data volumes are preserved. For an intentionally persistent Docker session set `KOL_PLAY_STOP_ON_CLOSE=0`.
@@ -41,7 +97,7 @@ Double-click **KoLmafia Play**, or run `bash contrib/kol-playctl start`. Require
 - `KOLMAFIA_RESTART_POLICY=no` is the local default. Always-on server owners can explicitly set `KOLMAFIA_RESTART_POLICY=unless-stopped`, but that is intentionally **not** the desktop behavior.
 - Explicit KoLmafia version changes still restart Java. Closing KoLmafia normally does not. No login or game-state automation has been added.
 
-`go-webui` is a browser/WebView **controller**, not a small independent web rendering engine; the dedicated Chromium app window here gives a predictable close event without introducing a new GUI dependency. The Go reverse proxy uses only the standard library rather than adding another caching/load-balancing proxy to a stateful game relay.
+`go-webui` is a browser/WebView **controller**, not a small independent web rendering engine; the dedicated Thorium/Chromium app-mode window supplies a closeable play surface without introducing a new GUI dependency. The Go reverse proxy uses only the standard library rather than adding another caching/load-balancing proxy to a stateful game relay.
 
 ### Development checks
 
@@ -51,7 +107,7 @@ go vet ./...
 bash -n contrib/kol-playctl
 ```
 
-**Caution:** The launcher owns the local `kolmafia` Compose service and stops it on close, even if it was already running before launch. Do not use this desktop mode against a shared/remote KoLmafia service. Validate shutdown with your actual Docker/Xpra browser stack before relying on it for a live session.
+**Caution:** The launcher owns the local `kolmafia` Compose service and stops it on close, even if it was already running before launch. Do not use this desktop mode against a shared/remote KoLmafia service. The dedicated Thorium window-close path was live-tested on 2026-10-30; retest after launcher, browser, container-image, or host changes. Other shutdown paths remain unverified.
 
 ## Versions
 
