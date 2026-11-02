@@ -6,7 +6,7 @@ services:
       args:
         XPRA_CHANNEL: ${XPRA_CHANNEL:-stable}
     hostname: kolmafia
-    restart: unless-stopped
+    restart: "${KOLMAFIA_RESTART_POLICY:-no}"
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}

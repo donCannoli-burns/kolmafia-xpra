@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KoLmafia Play Plane</title>
+  <link rel="stylesheet" href="/play/style.css">
+</head>
+<body data-mode="xpra">
+  <header>
+    <strong>KoLmafia <span>Play Plane</span></strong>
+    <nav aria-label="View mode">
+      <button type="button" data-view="xpra" aria-pressed="true">Desktop</button>
+      <button type="button" data-view="relay" aria-pressed="false">Relay</button>
+      <button type="button" data-view="split" aria-pressed="false">Split</button>
+    </nav>
+    <a href="/xpra/" target="_blank" rel="noopener">Full desktop</a>
+    <a href="/game.php" target="_blank" rel="noopener">Full relay</a>
+  </header>
+  <main>
+    <section id="desktop" aria-label="KoLmafia Xpra desktop"><iframe title="KoLmafia desktop" src="/xpra/"></iframe></section>
+    <section id="relay" aria-label="KoLmafia relay"><iframe title="KoLmafia relay" src="/game.php"></iframe></section>
+  </main>
+  <script src="/play/app.js"></script>
+</body>
+</html>
