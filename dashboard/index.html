@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>KoLmafia Workspace</title>
+  <link rel="stylesheet" href="./app.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <nav class="rail" aria-label="Workspace sections">
+      <div class="rail-logo" title="KoLmafia">K</div>
+      <div class="rail-divider"></div>
+      <button class="rail-button selected" data-section="game" title="Game" aria-label="Game navigation" aria-pressed="true">♜</button>
+      <button class="rail-button" data-section="files" title="Data files" aria-label="Data file navigation" aria-pressed="false">▤</button>
+      <button class="rail-button" data-section="native" title="KoLmafia desktop" aria-label="Native KoLmafia navigation" aria-pressed="false">▣</button>
+      <div class="rail-spacer"></div>
+      <button id="toggle-friends-rail" class="rail-button" title="Toggle friends" aria-label="Toggle friends panel">♧</button>
+    </nav>
+
+    <aside class="sidebar" aria-label="Navigation">
+      <header class="sidebar-head"><strong>KoLmafia</strong><span class="tiny">Workspace</span></header>
+      <div class="sidebar-scroll">
+        <section id="section-game" class="nav-section">
+          <h2>GAME VIEWS</h2>
+          <button class="nav-item" data-open="relay"><span class="nav-icon">◈</span>Game relay</button>
+          <button class="nav-item" data-open="inventory"><span class="nav-icon">▦</span>Inventory</button>
+          <button class="nav-item" data-open="character"><span class="nav-icon">♙</span>Character</button>
+          <button class="nav-item" data-open="quest"><span class="nav-icon">☷</span>Quest log</button>
+          <button class="nav-item" data-open="chat"><span class="nav-icon">#</span>Chat</button>
+          <h2>NATIVE INTERFACE</h2>
+          <button class="nav-item" data-open="native"><span class="nav-icon">▣</span>KoLmafia desktop</button>
+          <p class="nav-note">Native Swing tabs remain inside the Xpra desktop.</p>
+        </section>
+        <section id="section-files" class="nav-section hidden">
+          <h2>DATA TREE <button class="small-icon" id="refresh-files" title="Refresh folders" aria-label="Refresh folders">↻</button></h2>
+          <p class="nav-note">Read-only view of the mounted <code>data/</code> tree. Account/session settings are excluded.</p>
+          <div id="file-tree" role="tree" aria-label="KoLmafia data files"><span class="muted">Choose the folder icon to load files.</span></div>
+        </section>
+        <section id="section-native" class="nav-section hidden">
+          <h2>KoLMAFIA UI</h2>
+          <button class="nav-item" data-open="native"><span class="nav-icon">▣</span>Live desktop</button>
+          <button class="nav-item" data-open="relay"><span class="nav-icon">◈</span>Game relay</button>
+          <p class="nav-note">The live Swing window, its tab bar, and its child panels appear together inside Xpra. Individual Swing controls are not separate web routes.</p>
+        </section>
+      </div>
+      <footer class="profile-bar"><span class="profile-dot" aria-hidden="true"></span><span>Local KoLmafia session</span><a href="/xpra/" target="_blank" rel="noopener" title="Open Xpra in a new browser tab">↗</a></footer>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar"><div class="topbar-title"><span class="hash">◈</span><strong>KoLmafia Workspace</strong><span class="topbar-subtitle">Game · Files · Desktop</span></div><div class="top-actions"><button id="open-relay" title="Open relay tab">Relay</button><button id="open-native" title="Open desktop tab">Desktop</button><button id="toggle-friends" class="icon-action" title="Toggle online friends" aria-label="Toggle online friends">♧</button></div></header>
+      <div id="tabs" class="tabs" role="tablist" aria-label="Open workspaces"></div>
+      <div id="panels" class="panels"></div>
+      <div class="statusbar"><span id="status-text" role="status">Ready</span><span class="status-right">Same-origin relay · Local Xpra</span></div>
+    </main>
+
+    <aside id="friends-sidebar" class="friends" aria-label="Online friends">
+      <div class="friends-head"><div><strong>Friends</strong><div class="tiny">Kingdom of Loathing</div></div><button id="refresh-friends" class="small-icon" aria-label="Refresh online friends" title="Run silent /friends">↻</button></div>
+      <div class="friends-content"><h2 id="friends-heading">ONLINE — NOT CHECKED</h2><div id="friends-list"><p class="muted">Run <code>/friends</code> to check who is online.</p></div><p class="friends-note">The dashboard requests only <code>/friends</code>; it does not post a chat message. Results are live, not sample users.</p></div>
+    </aside>
+  </div>
+</body>
+</html>
