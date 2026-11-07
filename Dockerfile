@@ -25,7 +25,7 @@ RUN apt-get update \
       -o "/etc/apt/sources.list.d/$repo.sources" \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-      xpra xpra-x11 xpra-html5 xserver-xorg-core xserver-xorg-video-dummy xauth python3-xdg \
+      xpra xpra-x11 xpra-html5 xserver-xorg-core xserver-xorg-video-dummy xauth python3 python3-xdg \
       openjdk-25-jre zenity jq caddy \
       libgtk-3-0t64 \
       fonts-inter fonts-dejavu fonts-liberation fontconfig \
@@ -44,6 +44,7 @@ COPY fonts.conf /etc/fonts/local.conf
 COPY --from=gio-browse /src/libgiobrowse.so /usr/local/lib/gio/modules/
 COPY --from=kmail-bridge /kmail-bridge /usr/local/bin/
 COPY Caddyfile /etc/caddy/Caddyfile
+COPY dashboard/ /opt/kolmafia-dashboard/
 COPY html5/default-settings.txt /etc/xpra/html5-client/
 COPY html5/kolmafia.js html5/kolmafia.css /usr/share/xpra/www/
 RUN sed -i 's|</head>|<link rel="stylesheet" href="kolmafia.css" /><script src="kolmafia.js"></script></head>|' \

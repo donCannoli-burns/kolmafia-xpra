@@ -9,7 +9,7 @@ docker compose up -d --build
 
 Or skip the build and pull `ghcr.io/gausie/kolmafia-xpra:latest` (amd64 and arm64, rebuilt on every push to `main`). In Portainer, create a stack from `compose.yaml` with the `build:` block removed, and set the variables from `.env.example` in the stack's environment.
 
-- `8080`: everything on one port. The KoLmafia relay is at `/` and the xpra HTML5 client at `/xpra/`.
+- `8080`: everything on one port. The web workspace lands at `/dashboard/` (with `/` redirecting there); the game relay is at `/game.php` and the xpra HTML5 client is at `/xpra/`.
 - `14500`: xpra directly, for native clients on a trusted network (`xpra attach tcp://host:14500`).
 
 Both bind to `BIND_ADDRESS` (default `127.0.0.1`). Put `8080` behind your reverse proxy and auth on a single hostname. Native clients can also go through it with `xpra attach wss://kol.example.com/xpra/`.
@@ -48,3 +48,7 @@ contrib/xpra-attach-authelia wss://kol.example.com/xpra/
 It finds the Authelia portal from the redirect it gets for that URL (set `AUTHELIA_URL` to override), asks for your login in a dialog, and with "Remember me" keeps it in the macOS keychain or Secret Service. Saved logins that stop working are forgotten and you're asked again. On macOS it uses `/Applications/Xpra.app` when `xpra` isn't on your `PATH`. Needs `curl` and `jq`.
 
 `contrib/make-macos-app wss://kol.example.com/xpra/` downloads Xpra from xpra.org and builds `~/Applications/KoLmafia.app`, a renamed copy that runs the above, so it shows up as KoLmafia in Spotlight, the dock and the app switcher. Set `XPRA_CHANNEL=beta` to match a beta server, and add `--desktop-scaling=0.5` after the URL if the server runs `KOLMAFIA_UI_SCALE=2`. `--open-url=yes` opens the relay browser without the client asking first each time.
+
+## Web workspace dashboard
+
+The optional Discord-style workspace opens relay pages, the native Xpra desktop, and read-only data previews in closable tabs, with a friends panel populated by the silent `/friends` chat query. See [dashboard setup and security notes](docs/DASHBOARD.md). The native KoLmafia Swing tabs remain inside its Xpra desktop view.

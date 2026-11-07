@@ -3,28 +3,35 @@
 	auto_https off
 }
 
-# One port for everything: the relay serves root-absolute paths so it gets /, and the xpra
-# HTML5 client derives its websocket path from the page URL so it works under /xpra/.
+# Dashboard owns only the landing path and its static/API prefixes. Relay routes keep
+# their original root-absolute paths, and the Xpra websocket stays under /xpra/.
 :8080 {
 	redir /xpra /xpra/
+	@landing path /
+	redir @landing /dashboard/ 302
+
+	handle_path /dashboard/* {
+		root * /opt/kolmafia-dashboard
+		file_server
+	}
+	handle_path /_dashboard/api/* {
+		reverse_proxy 127.0.0.1:18081
+	}
 	handle_path /xpra/* {
 		reverse_proxy 127.0.0.1:14500
 	}
 	handle {
-		# The relay's own / isn't the game.
-		rewrite / /game.php
-		# KoL serves its mobile layout when mob=1 is sent; phones get it without visiting gomobile.php.
+		# The dashboard is not a relay replacement: game.php and all assets still
+		# belong to KoLmafia. Phones get the relay's native mobile layout.
 		@mobile header_regexp User-Agent (?i)android|iphone|ipod|ipad|mobile
-		# One Cookie line only: the relay keeps just the last Cookie header it reads.
 		request_header @mobile Cookie "{http.request.header.Cookie}; mob=1"
 		reverse_proxy 127.0.0.1:60080
 	}
 
-	# The relay only listens once KoLmafia is logged in, so send people to xpra to do that.
 	handle_errors {
 		@relay_down {
 			expression {err.status_code} == 502
-			not path /xpra /xpra/*
+			not path /xpra /xpra/* /dashboard/* /_dashboard/api/*
 		}
 		redir @relay_down /xpra/
 	}

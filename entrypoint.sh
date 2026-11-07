@@ -24,6 +24,8 @@ else
   echo 'relayAllowRemoteAccess=true' >> "$prefs"
 fi
 
+# The dashboard API is read-only, local-only, and restricted to selected data folders.
+python3 -u /opt/kolmafia-dashboard/api.py &
 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
 
 if [ -n "$KMAIL_PASSWORD" ]; then
